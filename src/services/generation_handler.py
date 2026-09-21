@@ -1823,7 +1823,10 @@ class GenerationHandler:
                                 if stream:
                                     yield self._create_stream_chunk(f"缓存 {resolution_name} 图片中...\n")
                                 cached_filename = await self.file_cache.cache_base64_image(encoded_image, resolution_name)
-                                local_url = f"{self._get_base_url(response_state)}/tmp/{cached_filename}"
+                                local_url = await self.file_cache.publish_cached_image(
+                                    cached_filename,
+                                    self._get_base_url(response_state),
+                                )
                                 response_state["url"] = local_url
                                 response_state["generated_assets"]["upscaled_image"]["local_url"] = local_url
                                 response_state["generated_assets"]["upscaled_image"]["url"] = local_url
@@ -1903,7 +1906,10 @@ class GenerationHandler:
                     yield self._create_stream_chunk("正在缓存 1K 图片文件...\n")
                 try:
                     cached_filename = await self.file_cache.download_and_cache(image_url, "image")
-                    local_url = f"{self._get_base_url(response_state)}/tmp/{cached_filename}"
+                    local_url = await self.file_cache.publish_cached_image(
+                        cached_filename,
+                        self._get_base_url(response_state),
+                    )
                     if stream:
                         yield self._create_stream_chunk("✅ 1K 图片缓存成功,准备返回缓存地址...\n")
                 except Exception as e:
