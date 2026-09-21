@@ -348,6 +348,14 @@ Prometheus 可直接抓 `/metrics`。如果部署到 Kubernetes，建议只在�
 > - `generationConfig.responseModalities`
 > - `generationConfig.imageConfig.aspectRatio`
 > - `generationConfig.imageConfig.imageSize`
+> - `generationConfig.topP` / `top_p` compatibility validation
+>
+> `top_p` follows the public OpenAI/Gemini range of `0..1`, but Google Flow's
+> private media endpoint does not expose nucleus sampling. This adapter accepts
+> only the compatibility default `1.0` (and omits it upstream). Non-default
+> values return HTTP `400` before account selection or CAPTCHA work instead of
+> being silently ignored. Prefer omitting `top_p`; do not tune both
+> `temperature` and `top_p` together.
 
 ### Gemini 官方 generateContent（文生图）
 

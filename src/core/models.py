@@ -1,6 +1,6 @@
 """Data models for Flow2API"""
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 from typing import Optional, List, Union, Any, Literal
 from datetime import datetime
 
@@ -257,6 +257,11 @@ class GenerationConfigParam(BaseModel):
 
     responseModalities: Optional[List[str]] = None  # ["IMAGE", "TEXT"]
     imageConfig: Optional[ImageConfig] = None
+    topP: Optional[float] = Field(
+        default=None,
+        validation_alias=AliasChoices("topP", "top_p"),
+        serialization_alias="topP",
+    )
 
     model_config = ConfigDict(extra="allow")
 
@@ -309,6 +314,7 @@ class ChatCompletionRequest(BaseModel):
     messages: Optional[List[ChatMessage]] = None
     stream: bool = False
     temperature: Optional[float] = None
+    top_p: Optional[float] = None
     max_tokens: Optional[int] = None
     # Flow2API specific parameters
     image: Optional[str] = None  # Base64 encoded image (deprecated, use messages)

@@ -66,6 +66,15 @@ GEMINI_STATUS_MAP = {
     503: "UNAVAILABLE",
     504: "DEADLINE_EXCEEDED",
 }
+FLOW_TOP_P_COMPATIBILITY_DEFAULT = 1.0
+
+
+class FlowTopPCompatibilityError(ValueError):
+    """A client requested top-p behavior that Google Flow cannot apply."""
+
+    def __init__(self, message: str, code: str):
+        super().__init__(message)
+        self.code = code
 
 # Dependency injection will be set up in main.py
 generation_handler: GenerationHandler = None
@@ -80,6 +89,7 @@ class NormalizedGenerationRequest:
     images: List[bytes]
     messages: Optional[List[ChatMessage]] = None
     video_media_id: Optional[str] = None
+    top_p: Optional[float] = None
 
 
 def set_generation_handler(handler: GenerationHandler):
@@ -92,6 +102,47 @@ def _ensure_generation_handler() -> GenerationHandler:
     if generation_handler is None:
         raise HTTPException(status_code=500, detail="Generation handler not initialized")
     return generation_handler
+
+
+def _validate_flow_top_p(top_p: Optional[float]) -> None:
+    """Accept only the compatibility default that is safe to omit upstream.
+
+    Google Flow's private ``flowMedia:batchGenerateImages`` schema rejects
+    ``topP`` and the known generation/sampling wrapper objects.  Passing a
+    non-default value would therefore either fail upstream or be silently
+    ignored.  Fail locally before account selection, CAPTCHA work, or billing.
+    """
+    if top_p is None:
+        return
+
+    if not 0 <= top_p <= 1:
+        raise FlowTopPCompatibilityError(
+            "top_p must be a finite number between 0 and 1 inclusive.",
+            "invalid_parameter_value",
+        )
+
+    if top_p != FLOW_TOP_P_COMPATIBILITY_DEFAULT:
+        raise FlowTopPCompatibilityError(
+            "This Flow2API channel accepts top_p only at the compatibility "
+            "default 1.0. Google Flow does not expose nucleus sampling for "
+            "its media generation endpoint, so non-default top_p values are "
+            "rejected instead of being silently ignored.",
+            "unsupported_parameter",
+        )
+
+
+def _build_openai_top_p_error(exc: FlowTopPCompatibilityError) -> JSONResponse:
+    return JSONResponse(
+        status_code=400,
+        content={
+            "error": {
+                "message": str(exc),
+                "type": "invalid_request_error",
+                "param": "top_p",
+                "code": exc.code,
+            }
+        },
+    )
 
 
 def _build_model_description(model_config: Dict[str, Any]) -> str:
@@ -440,6 +491,7 @@ async def _normalize_openai_request(
             images=images,
             messages=request.messages,
             video_media_id=video_media_id,
+            top_p=request.top_p,
         )
 
     if request.contents:
@@ -449,6 +501,8 @@ async def _normalize_openai_request(
         )
         normalized = await _normalize_gemini_request(request.model, gemini_request)
         normalized.messages = request.messages
+        if request.top_p is not None:
+            normalized.top_p = request.top_p
         return normalized
 
     raise HTTPException(status_code=400, detail="Messages or contents cannot be empty")
@@ -481,6 +535,7 @@ async def _normalize_gemini_request(
         model=resolved_model,
         prompt=prompt,
         images=images,
+        top_p=request.generationConfig.topP if request.generationConfig else None,
     )
 
 
@@ -859,6 +914,7 @@ async def create_chat_completion(
     """OpenAI-compatible unified generation endpoint."""
     try:
         normalized = await _normalize_openai_request(request)
+        _validate_flow_top_p(normalized.top_p)
         if not normalized.prompt:
             raise HTTPException(status_code=400, detail="Prompt cannot be empty")
 
@@ -886,6 +942,8 @@ async def create_chat_completion(
         )
         return _build_openai_json_response(payload)
 
+    except FlowTopPCompatibilityError as exc:
+        return _build_openai_top_p_error(exc)
     except HTTPException:
         raise
     except Exception as exc:
@@ -903,6 +961,7 @@ async def generate_content(
     """Gemini official generateContent endpoint."""
     try:
         normalized = await _normalize_gemini_request(model, request)
+        _validate_flow_top_p(normalized.top_p)
         if not normalized.prompt:
             raise HTTPException(status_code=400, detail="Prompt cannot be empty")
 
@@ -926,6 +985,11 @@ async def generate_content(
             content=await _build_gemini_success_payload(payload, normalized.model)
         )
 
+    except FlowTopPCompatibilityError as exc:
+        return JSONResponse(
+            status_code=400,
+            content=_build_gemini_error_payload(400, str(exc)),
+        )
     except HTTPException as exc:
         return JSONResponse(
             status_code=exc.status_code,
@@ -950,6 +1014,7 @@ async def stream_generate_content(
     """Gemini official streamGenerateContent endpoint."""
     try:
         normalized = await _normalize_gemini_request(model, request)
+        _validate_flow_top_p(normalized.top_p)
         if not normalized.prompt:
             raise HTTPException(status_code=400, detail="Prompt cannot be empty")
 
@@ -963,6 +1028,11 @@ async def stream_generate_content(
                 "Connection": "keep-alive",
                 "X-Accel-Buffering": "no",
             },
+        )
+    except FlowTopPCompatibilityError as exc:
+        return JSONResponse(
+            status_code=400,
+            content=_build_gemini_error_payload(400, str(exc)),
         )
     except HTTPException as exc:
         return JSONResponse(
