@@ -142,6 +142,7 @@ class LoadBalancer:
         for_image_generation: bool = False,
         for_video_generation: bool = False,
         model: Optional[str] = None,
+        model_quota_key: Optional[str] = None,
         reserve: bool = False,
         enforce_concurrency_filter: bool = True,
         track_pending: bool = False,
@@ -153,6 +154,7 @@ class LoadBalancer:
             for_image_generation: If True, only select tokens with image_enabled=True
             for_video_generation: If True, only select tokens with video_enabled=True
             model: Model name (used to filter tokens for specific models)
+            model_quota_key: Upstream model-family key used for quota cooldowns
             reserve: Whether to atomically reserve one concurrency slot for the selected token
             enforce_concurrency_filter:
                 Whether to pre-filter tokens by current inflight/remaining capacity.
@@ -180,11 +182,19 @@ class LoadBalancer:
         available_tokens = []
         filtered_reasons = {}
         required_tier = get_required_paygate_tier_for_model(model)
+        cooled_token_ids = set()
+        if model_quota_key:
+            cooled_token_ids = await self.token_manager.get_token_ids_in_model_cooldown(
+                model_quota_key
+            )
 
         for token in active_tokens:
             normalized_tier = normalize_user_paygate_tier(token.user_paygate_tier)
             if model and not supports_model_for_tier(model, normalized_tier):
                 filtered_reasons[token.id] = '账号等级不足，需要 ' + get_paygate_tier_label(required_tier)
+                continue
+            if token.id in cooled_token_ids:
+                filtered_reasons[token.id] = "当前模型族每日额度冷却中"
                 continue
             if for_image_generation:
                 if not token.image_enabled:
@@ -320,6 +330,7 @@ class LoadBalancer:
         for_image_generation: bool = False,
         for_video_generation: bool = False,
         model: Optional[str] = None,
+        model_quota_key: Optional[str] = None,
     ) -> Optional[str]:
         """给出更明确的“无可用账号”原因，优先用于分辨率/tier 档位提示。"""
         active_tokens = await self.token_manager.get_active_tokens()
@@ -345,6 +356,14 @@ class LoadBalancer:
             if for_video_generation and not token.video_enabled:
                 continue
             capability_tokens.append(token)
+
+        cooled_token_ids = set()
+        if model_quota_key:
+            cooled_token_ids = await self.token_manager.get_token_ids_in_model_cooldown(
+                model_quota_key
+            )
+        if capability_tokens and all(token.id in cooled_token_ids for token in capability_tokens):
+            return "当前模型族的所有可用账号均处于每日额度冷却中，其他模型仍可调度。"
 
         if supported_tokens and not capability_tokens:
             if for_image_generation:

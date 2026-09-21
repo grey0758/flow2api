@@ -3,7 +3,7 @@ import asyncio
 import aiosqlite
 import json
 from contextlib import asynccontextmanager
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from typing import Optional, List, Dict, Any
 from pathlib import Path
 from .config import DEFAULT_YESCAPTCHA_TASK_TYPE, normalize_yescaptcha_task_type
@@ -432,6 +432,25 @@ class Database:
                     )
                 """)
 
+            if not await self._table_exists(db, "token_model_cooldowns"):
+                print("  ✓ Creating missing table: token_model_cooldowns")
+                await db.execute("""
+                    CREATE TABLE token_model_cooldowns (
+                        token_id INTEGER NOT NULL,
+                        model_key TEXT NOT NULL,
+                        reason TEXT NOT NULL,
+                        cooling_until TIMESTAMP NOT NULL,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        PRIMARY KEY (token_id, model_key),
+                        FOREIGN KEY (token_id) REFERENCES tokens(id) ON DELETE CASCADE
+                    )
+                """)
+                await db.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_token_model_cooldowns_lookup
+                    ON token_model_cooldowns(model_key, cooling_until)
+                """)
+
             # ========== Step 2: Add missing columns to existing tables ==========
             # Check and add missing columns to tokens table
             if await self._table_exists(db, "tokens"):
@@ -680,6 +699,27 @@ class Database:
                     consecutive_error_count INTEGER DEFAULT 0,
                     FOREIGN KEY (token_id) REFERENCES tokens(id)
                 )
+            """)
+
+            # A provider can exhaust one model family while the same account
+            # remains valid for other image/video models. Persist that state
+            # separately from tokens.is_active so restarts do not turn a
+            # model-scoped quota event into an account-wide outage.
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS token_model_cooldowns (
+                    token_id INTEGER NOT NULL,
+                    model_key TEXT NOT NULL,
+                    reason TEXT NOT NULL,
+                    cooling_until TIMESTAMP NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    PRIMARY KEY (token_id, model_key),
+                    FOREIGN KEY (token_id) REFERENCES tokens(id) ON DELETE CASCADE
+                )
+            """)
+            await db.execute("""
+                CREATE INDEX IF NOT EXISTS idx_token_model_cooldowns_lookup
+                ON token_model_cooldowns(model_key, cooling_until)
             """)
 
             # Tasks table
@@ -1332,6 +1372,81 @@ class Database:
                 UPDATE token_stats SET consecutive_error_count = 0 WHERE token_id = ?
             """, (token_id,))
             await db.commit()
+
+    async def set_token_model_cooldown(
+        self,
+        token_id: int,
+        model_key: str,
+        reason: str,
+        cooling_until: datetime,
+    ) -> None:
+        """Persist a model-scoped cooldown without disabling the account."""
+        normalized_key = str(model_key or "").strip().upper()
+        if not normalized_key:
+            raise ValueError("model_key is required")
+
+        if cooling_until.tzinfo is not None:
+            cooling_until = cooling_until.astimezone(timezone.utc).replace(tzinfo=None)
+        cooling_until_text = cooling_until.strftime("%Y-%m-%d %H:%M:%S")
+
+        async with self._connect(write=True) as db:
+            await db.execute(
+                """
+                INSERT INTO token_model_cooldowns (
+                    token_id, model_key, reason, cooling_until, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                ON CONFLICT(token_id, model_key) DO UPDATE SET
+                    reason = excluded.reason,
+                    cooling_until = excluded.cooling_until,
+                    updated_at = CURRENT_TIMESTAMP
+                """,
+                (token_id, normalized_key, str(reason or "model_quota"), cooling_until_text),
+            )
+            await db.commit()
+
+    async def get_token_ids_in_model_cooldown(self, model_key: str) -> set[int]:
+        """Return token IDs whose cooldown for this model family is active."""
+        normalized_key = str(model_key or "").strip().upper()
+        if not normalized_key:
+            return set()
+
+        async with self._connect() as db:
+            cursor = await db.execute(
+                """
+                SELECT token_id
+                FROM token_model_cooldowns
+                WHERE model_key = ? AND cooling_until > CURRENT_TIMESTAMP
+                """,
+                (normalized_key,),
+            )
+            return {int(row[0]) for row in await cursor.fetchall()}
+
+    async def clear_token_model_cooldown(self, token_id: int, model_key: str) -> None:
+        """Clear one model-scoped cooldown after a verified success."""
+        normalized_key = str(model_key or "").strip().upper()
+        if not normalized_key:
+            return
+
+        async with self._connect(write=True) as db:
+            await db.execute(
+                "DELETE FROM token_model_cooldowns WHERE token_id = ? AND model_key = ?",
+                (token_id, normalized_key),
+            )
+            await db.commit()
+
+    async def get_model_cooldowns(self) -> List[Dict[str, Any]]:
+        """Return non-secret cooldown metadata for operations and health checks."""
+        async with self._connect() as db:
+            db.row_factory = aiosqlite.Row
+            cursor = await db.execute(
+                """
+                SELECT token_id, model_key, reason, cooling_until, created_at, updated_at
+                FROM token_model_cooldowns
+                WHERE cooling_until > CURRENT_TIMESTAMP
+                ORDER BY model_key, token_id
+                """
+            )
+            return [dict(row) for row in await cursor.fetchall()]
 
     # Config operations
     async def get_admin_config(self) -> Optional[AdminConfig]:

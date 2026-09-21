@@ -1260,6 +1260,7 @@ class GenerationHandler:
 
         model_config = MODEL_CONFIG[model]
         generation_type = model_config["type"]
+        model_quota_key = model_config.get("model_name") or model
         video_type_for_op = model_config.get("video_type", "")
         request_operation = "extend_video" if video_type_for_op == "extend" else f"generate_{generation_type}"
         prompt_for_log = prompt if len(prompt) <= 2000 else f"{prompt[:2000]}...(truncated)"
@@ -1295,6 +1296,7 @@ class GenerationHandler:
             token = await self.load_balancer.select_token(
                 for_image_generation=True,
                 model=model,
+                model_quota_key=model_quota_key,
                 reserve=False,
                 enforce_concurrency_filter=False,
                 track_pending=True,
@@ -1303,6 +1305,7 @@ class GenerationHandler:
             token = await self.load_balancer.select_token(
                 for_video_generation=True,
                 model=model,
+                model_quota_key=model_quota_key,
                 reserve=False,
                 enforce_concurrency_filter=False,
                 track_pending=True,
@@ -1316,6 +1319,7 @@ class GenerationHandler:
                     for_image_generation=(generation_type == "image"),
                     for_video_generation=(generation_type == "video"),
                     model=model,
+                    model_quota_key=model_quota_key,
                 )
             if not error_msg:
                 error_msg = self._get_no_token_error_message(generation_type)
@@ -1434,7 +1438,7 @@ class GenerationHandler:
                 error_msg = generation_result.get("error_message") or "生成未成功完成"
                 debug_logger.log_warning(f"[GENERATION] 生成未成功，不扣次数: {error_msg}")
                 if token:
-                    await self.token_manager.record_error(token.id)
+                    await self._record_token_failure(token.id, model_quota_key, error_msg)
                 duration = time.time() - start_time
                 record_generation_result(generation_type, "failed", duration)
                 perf_trace["status"] = "failed"
@@ -1463,6 +1467,7 @@ class GenerationHandler:
 
             # 重置错误计数 (请求成功时清空连续错误计数)
             await self.token_manager.record_success(token.id)
+            await self.token_manager.clear_model_cooldown(token.id, model_quota_key)
 
             debug_logger.log_info(f"[GENERATION] ✅ 生成成功完成")
 
@@ -1538,12 +1543,7 @@ class GenerationHandler:
             error_msg = f"生成失败: {str(e)}"
             debug_logger.log_error(f"[GENERATION] 生成失败: {error_msg}")
             if token:
-                if self._should_count_token_error(e):
-                    await self.token_manager.record_error(token.id)
-                else:
-                    debug_logger.log_info(
-                        f"[GENERATION] 跳过 token 错误计数: token_id={token.id}, reason={str(e)[:200]}"
-                    )
+                await self._record_token_failure(token.id, model_quota_key, e)
 
             # 先将最终失败状态落库，再返回错误响应，避免日志停在 102。
             duration = time.time() - start_time
@@ -1615,6 +1615,48 @@ class GenerationHandler:
             return False
 
         return True
+
+    @staticmethod
+    def _is_model_daily_quota_error(error: Any) -> bool:
+        error_text = str(error or "").strip().lower()
+        return "public_error_per_model_daily_quota_reached" in error_text
+
+    @staticmethod
+    def _is_model_transient_throttle_error(error: Any) -> bool:
+        error_text = str(error or "").strip().lower()
+        return "public_error_user_requests_throttled" in error_text
+
+    async def _record_token_failure(self, token_id: int, model_quota_key: str, error: Any) -> None:
+        """Classify a failure before changing account-wide scheduling state."""
+        if self._is_model_daily_quota_error(error):
+            cooling_until = await self.token_manager.cool_down_model_daily_quota(
+                token_id,
+                model_quota_key,
+            )
+            debug_logger.log_warning(
+                f"[MODEL_QUOTA] Token {token_id} model={model_quota_key} "
+                f"cooling_until={cooling_until.isoformat()}"
+            )
+            return
+
+        if self._is_model_transient_throttle_error(error):
+            cooling_until = await self.token_manager.cool_down_model_transient_throttle(
+                token_id,
+                model_quota_key,
+            )
+            debug_logger.log_warning(
+                f"[MODEL_THROTTLE] Token {token_id} model={model_quota_key} "
+                f"cooling_until={cooling_until.isoformat()}"
+            )
+            return
+
+        if self._should_count_token_error(error):
+            await self.token_manager.record_error(token_id)
+            return
+
+        debug_logger.log_info(
+            f"[GENERATION] 跳过 token 错误计数: token_id={token_id}, reason={str(error)[:200]}"
+        )
 
     async def _handle_image_generation(
         self,

@@ -15,6 +15,9 @@ from .proxy_manager import ProxyManager
 class TokenManager:
     """Token lifecycle manager with AT auto-refresh"""
 
+    MODEL_DAILY_QUOTA_COOLDOWN_HOURS = 24
+    MODEL_TRANSIENT_THROTTLE_COOLDOWN_MINUTES = 15
+
     def __init__(self, db: Database, flow_client: FlowClient):
         self.db = db
         self.flow_client = flow_client
@@ -973,6 +976,43 @@ class TokenManager:
                 f"reached threshold ({admin_config.error_ban_threshold}), auto-disabling"
             )
             await self.disable_token(token_id)
+
+    async def cool_down_model_daily_quota(self, token_id: int, model_key: str) -> datetime:
+        """Cool one upstream model family without disabling the whole account."""
+        cooling_until = datetime.now(timezone.utc) + timedelta(
+            hours=self.MODEL_DAILY_QUOTA_COOLDOWN_HOURS
+        )
+        await self.db.set_token_model_cooldown(
+            token_id,
+            model_key,
+            "daily_quota",
+            cooling_until,
+        )
+        # Quota exhaustion is not evidence that the account, OAuth session, or
+        # other model families are broken. Do not let earlier quota failures
+        # contribute to the account-wide consecutive-error breaker.
+        await self.db.reset_error_count(token_id)
+        return cooling_until
+
+    async def cool_down_model_transient_throttle(self, token_id: int, model_key: str) -> datetime:
+        """Back off a throttled model family without marking the account invalid."""
+        cooling_until = datetime.now(timezone.utc) + timedelta(
+            minutes=self.MODEL_TRANSIENT_THROTTLE_COOLDOWN_MINUTES
+        )
+        await self.db.set_token_model_cooldown(
+            token_id,
+            model_key,
+            "user_requests_throttled",
+            cooling_until,
+        )
+        await self.db.reset_error_count(token_id)
+        return cooling_until
+
+    async def get_token_ids_in_model_cooldown(self, model_key: str) -> set[int]:
+        return await self.db.get_token_ids_in_model_cooldown(model_key)
+
+    async def clear_model_cooldown(self, token_id: int, model_key: str) -> None:
+        await self.db.clear_token_model_cooldown(token_id, model_key)
 
     async def record_success(self, token_id: int):
         """Record successful request (reset consecutive error count)
