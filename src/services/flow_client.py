@@ -31,6 +31,7 @@ class FlowClient:
     FLOW_BROWSER_COPYRIGHT_HEADER = "Copyright 2026 Google LLC. All Rights Reserved."
     FLOW_BROWSER_VALIDATION_HEADER = "MRCPrt/rS3JY47x2Yiz9h3ag4U8="
     FLOW_BROWSER_YEAR_HEADER = "2026"
+    FLOW_WEB_ORIGIN = "https://flow.google.com"
     FLOW_FRONTEND_EXPERIMENT_IDS = (
         "106184493,106256669,105798603,106281924,106259075,106262194,"
         "105993823,106104244,105484652,1714252,105928947,106238955,"
@@ -281,7 +282,7 @@ class FlowClient:
         return "; ".join(f"{key}={value}" for key, value in cookie_items.items())
 
     def _build_flow_project_page_url(self, project_id: str) -> str:
-        return f"https://labs.google/fx/tools/flow/project/{project_id}"
+        return f"{self.FLOW_WEB_ORIGIN}/project/{project_id}"
 
     def _build_current_flow_media_headers(
         self,
@@ -308,7 +309,14 @@ class FlowClient:
         return headers
 
     def _build_labs_request_context_headers(self, project_id: Optional[str]) -> Dict[str, str]:
-        return self._build_current_flow_media_headers()
+        headers = self._build_current_flow_media_headers()
+        headers["Origin"] = self.FLOW_WEB_ORIGIN
+        headers["Referer"] = (
+            self._build_flow_project_page_url(project_id)
+            if project_id
+            else f"{self.FLOW_WEB_ORIGIN}/"
+        )
+        return headers
 
     def _compact_json_dumps(self, payload: Any) -> str:
         return json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
@@ -4597,7 +4605,7 @@ class FlowClient:
                     if proxy_url and not str(next_fingerprint.get("proxy_url") or "").strip():
                         next_fingerprint["proxy_url"] = proxy_url
                     next_fingerprint["project_id"] = project_id
-                    next_fingerprint.setdefault("origin", "https://labs.google")
+                    next_fingerprint.setdefault("origin", self.FLOW_WEB_ORIGIN)
                     next_fingerprint.setdefault("referer", self._build_flow_project_page_url(project_id))
                     fingerprint = next_fingerprint or None
                 if token:
@@ -4701,7 +4709,7 @@ class FlowClient:
             self._merge_request_fingerprint(
                 {
                     "project_id": project_id,
-                    "origin": "https://labs.google",
+                    "origin": self.FLOW_WEB_ORIGIN,
                     "referer": self._build_flow_project_page_url(project_id),
                 }
             )
@@ -4884,6 +4892,13 @@ class FlowClient:
                     debug_logger.log_info(f"[reCAPTCHA {method}] polling #{i+1}: {result_json}")
 
                     status = result_json.get('status')
+                    error_id = result_json.get('errorId')
+                    if error_id not in (None, 0):
+                        error_code = str(result_json.get('errorCode') or 'UNKNOWN_ERROR').strip()
+                        debug_logger.log_error(
+                            f"[reCAPTCHA {method}] Task failed: errorCode={error_code}"
+                        )
+                        return None
                     if status == 'ready':
                         solution = result_json.get('solution', {})
                         response = solution.get('gRecaptchaResponse')
@@ -4909,5 +4924,4 @@ class FlowClient:
         except Exception as e:
             debug_logger.log_error(f"[reCAPTCHA {method}] error: {str(e)}")
             return None
-
 
