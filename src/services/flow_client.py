@@ -27,6 +27,7 @@ class FlowClient:
     """VideoFX API客户端"""
 
     REFERENCE_UPLOAD_GZIP_MIN_BYTES = 192_000
+    REFERENCE_UPLOAD_MAX_ATTEMPTS = 2  # Initial upload plus at most one retry.
 
     FLOW_PUBLIC_API_KEY = "AIzaSyBtrm0o5ab1c-Ec8ZuLcGt3oJAA5VWt3pY"
     FLOW_BROWSER_CHANNEL_HEADER = "stable"
@@ -1620,7 +1621,9 @@ class FlowClient:
                 "tool": "ASSET_MANAGER"
             }
         }
-        max_retries = config.flow_max_retries
+        max_retries = min(config.flow_max_retries, self.REFERENCE_UPLOAD_MAX_ATTEMPTS)
+        if isinstance(diagnostic_trace, dict):
+            diagnostic_trace["max_attempts"] = max_retries
         last_error: Optional[Exception] = None
 
         captcha_method = getattr(config, "captcha_method", "personal")
@@ -5111,4 +5114,3 @@ class FlowClient:
         except Exception as e:
             debug_logger.log_error(f"[reCAPTCHA {method}] error: {str(e)}")
             return None
-

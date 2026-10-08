@@ -12,8 +12,11 @@ flatten transparency or perform lossy image recompression. JSON serialization
 and gzip run off the event loop and once per reference; upload retries reuse
 the same body, session and owned project.
 
-The upload loop owns timeout and upstream5xx retries within the configured
-attempt ceiling. Its new-endpoint requests disable the generic urllib replay.
+Each owned reference upload gets one initial POST and at most one retry for
+timeout or upstream5xx (at most two POSTs), even if the general Flow retry
+configuration is higher. A lower configuration remains respected. The same
+losslessly compressed body is reused for the retry. The new-endpoint requests
+disable the generic urllib replay.
 HTTP400 is terminal, and project-scoped uploads never use the unscoped legacy
 endpoint or resend an uncompressed body as a second fallback. Existing account
 and proxy bindings are retained. Debug output redacts upload payloads,
@@ -30,8 +33,8 @@ or numeric curl code when available, and whether another scoped attempt was
 scheduled. These records include failed attempts even when a later attempt
 succeeds. The trace contains no image content, exception text, credentials,
 account email, project/media identifier or proxy URL. The containing request
-log's existing token ID permits account comparisons. Retry limits and request
-behavior are unchanged. Legacy-endpoint calls are not included in this trace;
+log's existing token ID permits account comparisons. The effective upload
+attempt ceiling is also recorded as `max_attempts`. Legacy-endpoint calls are not included in this trace;
 production references use owned project contexts (`scoped=true`).
 
 Run `python -m pytest -q tests/test_lossless_upload_compression.py` for exact
