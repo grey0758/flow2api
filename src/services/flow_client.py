@@ -1481,6 +1481,51 @@ class FlowClient:
         compressed_body = gzip.compress(original_body, compresslevel=6, mtime=0)
         return compressed_body if len(compressed_body) < len(original_body) else None
 
+    def _record_reference_upload_attempt(
+        self,
+        trace: Optional[Dict[str, Any]],
+        attempt: int,
+        started_at: float,
+        upload_started_at: float,
+        error: Optional[Exception] = None,
+        retry_scheduled: bool = False,
+    ) -> None:
+        """Retain timings and fixed error classes, never exception text or URLs."""
+        if not isinstance(trace, dict):
+            return
+        now = time.monotonic()
+        item = {
+            "attempt": attempt,
+            "duration_ms": max(0, int((now - started_at) * 1000)),
+            "success": error is None,
+            "retry_scheduled": retry_scheduled,
+        }
+        if error is not None:
+            raw = str(error)
+            http_match = re.search(r"HTTP Error ([1-5][0-9]{2})", raw)
+            if http_match:
+                item["http_status_code"] = int(http_match.group(1))
+                item["cause"] = f"upstream_http_{http_match.group(1)}"
+            elif self._is_timeout_error(error) or "transport=network_timeout" in raw:
+                item["cause"] = "network_timeout"
+            elif raw.startswith("upload_missing_media:"):
+                item["cause"] = "missing_media"
+            else:
+                item["cause"] = "transport" if "transport=" in raw else "unknown"
+            # The HTTP boundary sanitizes text but preserves the original cause.
+            # Extract only curl's numeric code from at most three linked errors.
+            current = error
+            for _ in range(3):
+                curl_match = re.search(r"curl: \(([0-9]{1,3})\)", str(current))
+                if curl_match:
+                    item["curl_code"] = int(curl_match.group(1))
+                    break
+                current = getattr(current, "__cause__", None)
+                if current is None:
+                    break
+        trace["http_attempts"].append(item)
+        trace["duration_ms"] = max(0, int((now - upload_started_at) * 1000))
+
 
     async def upload_image(
         self,
@@ -1501,6 +1546,7 @@ class FlowClient:
         Returns:
             mediaId
         """
+        upload_started_at = time.monotonic()
         # 转换视频aspect_ratio为图片aspect_ratio
         # VIDEO_ASPECT_RATIO_LANDSCAPE -> IMAGE_ASPECT_RATIO_LANDSCAPE
         # VIDEO_ASPECT_RATIO_PORTRAIT -> IMAGE_ASPECT_RATIO_PORTRAIT
@@ -1550,6 +1596,15 @@ class FlowClient:
                 upload_headers = {"Content-Encoding": "gzip"}
         if isinstance(diagnostic_trace, dict):
             diagnostic_trace["request_encoding"] = "gzip" if upload_body else "identity"
+            diagnostic_trace.update({
+                "trace_version": 1,
+                "input_bytes": len(image_bytes),
+                "gzip_body_bytes": len(upload_body) if upload_body is not None else None,
+                "preparation_ms": max(0, int((time.monotonic() - upload_started_at) * 1000)),
+                "timeout_seconds": self.timeout,
+                "scoped": bool(normalized_project_id),
+                "http_attempts": [],
+            })
 
         # 兼容回退：旧接口 :uploadUserImage
         legacy_url = f"{self.api_base_url}:uploadUserImage"
@@ -1584,6 +1639,7 @@ class FlowClient:
         for retry_attempt in range(max_retries):
             if isinstance(diagnostic_trace, dict):
                 diagnostic_trace["attempts"] = retry_attempt + 1
+            attempt_started_at = time.monotonic()
             try:
                 new_result = await self._make_request(
                     method="POST",
@@ -1605,6 +1661,10 @@ class FlowClient:
                 if media_id:
                     if isinstance(diagnostic_trace, dict):
                         diagnostic_trace["status"] = "uploaded"
+                    self._record_reference_upload_attempt(
+                        diagnostic_trace, retry_attempt + 1, attempt_started_at,
+                        upload_started_at,
+                    )
                     return media_id
                 media = new_result.get("media") if isinstance(new_result, dict) else None
                 media_kind = (
@@ -1632,6 +1692,12 @@ class FlowClient:
                     "上游5xx" if http_match and int(http_match.group(1)) >= 500 else
                     None
                 ) if normalized_project_id else self._get_retry_reason(raw_cause)
+                self._record_reference_upload_attempt(
+                    diagnostic_trace, retry_attempt + 1, attempt_started_at,
+                    upload_started_at, error=new_upload_error,
+                    retry_scheduled=bool(normalized_project_id and retry_reason
+                                         and retry_attempt < max_retries - 1),
+                )
 
                 # 旧接口不携带 projectId，带项目上下文的上传一旦回退就可能把图片挂到错误项目。
                 if normalized_project_id:

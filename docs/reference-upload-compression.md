@@ -23,6 +23,17 @@ Compression reduces transport overhead and has passed same-account large-file
 upload checks. It cannot guarantee availability of the network or provider.
 A successful upload does not imply a generated image or recovered account.
 
+Each reference's existing request-log performance trace also records input
+bytes, gzip HTTP-body bytes when used, preparation time, the configured timeout,
+and each new-endpoint POST's duration, success, fixed failure class, HTTP status
+or numeric curl code when available, and whether another scoped attempt was
+scheduled. These records include failed attempts even when a later attempt
+succeeds. The trace contains no image content, exception text, credentials,
+account email, project/media identifier or proxy URL. The containing request
+log's existing token ID permits account comparisons. Retry limits and request
+behavior are unchanged. Legacy-endpoint calls are not included in this trace;
+production references use owned project contexts (`scoped=true`).
+
 Run `python -m pytest -q tests/test_lossless_upload_compression.py` for exact
 JPEG/PNG/WebP byte preservation, alpha/EXIF fixtures, the HTTP encoding,
 small/non-saving identity paths, body reuse and replay/redaction boundaries.
