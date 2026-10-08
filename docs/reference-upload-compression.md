@@ -1,0 +1,28 @@
+# Lossless reference uploads
+
+Project-scoped uploads retain the original image bytes. References at least
+192,000 bytes are encoded in the existing base64 JSON envelope, then gzip is
+applied to that HTTP request with `Content-Encoding: gzip`. If compression
+does not reduce the serialized request size, the original JSON transport is
+used. Small references also keep the original JSON transport.
+
+This preserves every image byte, including PNG/WebP alpha, EXIF orientation,
+color profiles and other embedded metadata. It does not resize, rotate,
+flatten transparency or perform lossy image recompression. JSON serialization
+and gzip run off the event loop and once per reference; upload retries reuse
+the same body, session and owned project.
+
+The upload loop owns timeout and upstream5xx retries within the configured
+attempt ceiling. Its new-endpoint requests disable the generic urllib replay.
+HTTP400 is terminal, and project-scoped uploads never use the unscoped legacy
+endpoint or resend an uncompressed body as a second fallback. Existing account
+and proxy bindings are retained. Debug output redacts upload payloads,
+credentials and raw provider responses; diagnostics retain only safe classes.
+
+Compression reduces transport overhead and has passed same-account large-file
+upload checks. It cannot guarantee availability of the network or provider.
+A successful upload does not imply a generated image or recovered account.
+
+Run `python -m pytest -q tests/test_lossless_upload_compression.py` for exact
+JPEG/PNG/WebP byte preservation, alpha/EXIF fixtures, the HTTP encoding,
+small/non-saving identity paths, body reuse and replay/redaction boundaries.

@@ -26,6 +26,8 @@ except ImportError:
 class FlowClient:
     """VideoFX API客户端"""
 
+    REFERENCE_UPLOAD_GZIP_MIN_BYTES = 192_000
+
     FLOW_PUBLIC_API_KEY = "AIzaSyBtrm0o5ab1c-Ec8ZuLcGt3oJAA5VWt3pY"
     FLOW_BROWSER_CHANNEL_HEADER = "stable"
     FLOW_BROWSER_COPYRIGHT_HEADER = "Copyright 2026 Google LLC. All Rights Reserved."
@@ -474,7 +476,11 @@ class FlowClient:
             if derived_project_id:
                 headers.setdefault("Referer", self._build_flow_project_page_url(derived_project_id))
 
-        request_body_for_log = raw_body if raw_body is not None else json_data
+        is_upload_request = url.endswith("/flow/uploadImage") or url.endswith(":uploadUserImage")
+        request_body_for_log = (
+            "[redacted image upload payload]" if is_upload_request
+            else raw_body if raw_body is not None else json_data
+        )
         if config.debug_enabled:
             if isinstance(fingerprint, dict):
                 proxy_for_log = proxy_url if proxy_url else "direct"
@@ -484,7 +490,7 @@ class FlowClient:
             debug_logger.log_request(
                 method=method,
                 url=url,
-                headers=headers,
+                headers={} if is_upload_request else headers,
                 body=request_body_for_log,
                 proxy=proxy_url
             )
@@ -519,13 +525,39 @@ class FlowClient:
                 if config.debug_enabled:
                     debug_logger.log_response(
                         status_code=response.status_code,
-                        headers=dict(response.headers),
-                        body=response.text,
+                        headers={} if is_upload_request else dict(response.headers),
+                        body="[redacted image upload response]" if is_upload_request else response.text,
                         duration_ms=duration_ms
                     )
 
                 if response.status_code >= 400:
                     error_reason = f"HTTP Error {response.status_code}"
+                    if is_upload_request:
+                        try:
+                            error_body = response.json()
+                            error_info = error_body.get("error") if isinstance(error_body, dict) else None
+                            if isinstance(error_info, dict):
+                                candidates = [error_info.get("status")]
+                                details = error_info.get("details")
+                                if isinstance(details, list):
+                                    candidates.extend(
+                                        detail.get("reason") for detail in details
+                                        if isinstance(detail, dict)
+                                    )
+                                message = error_info.get("message")
+                                if isinstance(message, str):
+                                    public_code = re.search(r"\bPUBLIC_ERROR_[A-Z0-9_]{2,64}\b", message)
+                                    if public_code:
+                                        candidates.insert(0, public_code.group(0))
+                                for candidate in candidates:
+                                    if isinstance(candidate, str) and re.fullmatch(r"[A-Z][A-Z0-9_]{1,64}", candidate):
+                                        error_reason += f": {candidate}"
+                                        break
+                        except Exception:
+                            pass
+                        debug_logger.log_error(f"[API FAILED] URL: {url}")
+                        debug_logger.log_error(f"[API FAILED] {error_reason}")
+                        raise Exception(error_reason)
                     try:
                         error_body = response.json()
                         if "error" in error_body:
@@ -553,7 +585,10 @@ class FlowClient:
             if "HTTP Error" not in error_msg and not any(x in error_msg for x in ["PUBLIC_ERROR", "INVALID_ARGUMENT"]):
                 debug_logger.log_error(f"[API FAILED] URL: {url}")
                 debug_logger.log_error(f"[API FAILED] Request Body: {request_body_for_log}")
-                debug_logger.log_error(f"[API FAILED] Exception: {error_msg}")
+                debug_logger.log_error(
+                    f"[API FAILED] Exception: {type(e).__name__}"
+                    if is_upload_request else f"[API FAILED] Exception: {error_msg}"
+                )
 
             if allow_urllib_fallback and self._should_fallback_to_urllib(error_msg):
                 debug_logger.log_warning(
@@ -571,12 +606,24 @@ class FlowClient:
                     )
                 except Exception as fallback_error:
                     debug_logger.log_error(
-                        f"[HTTP FALLBACK] urllib 回退也失败: {fallback_error}"
+                        f"[HTTP FALLBACK] urllib 回退也失败: "
+                        f"{type(fallback_error).__name__ if is_upload_request else fallback_error}"
                     )
+                    if is_upload_request:
+                        transport_kind = (
+                            "network_timeout" if self._is_timeout_error(e)
+                            or self._is_timeout_error(fallback_error) else "transport"
+                        )
+                        raise RuntimeError(
+                            f"Flow API request failed: transport={transport_kind}"
+                        ) from fallback_error
                     raise Exception(
                         f"Flow API request failed: curl={error_msg}; urllib={fallback_error}"
                     )
 
+            if is_upload_request and "HTTP Error" not in error_msg:
+                safe_class = "network_timeout" if self._is_timeout_error(e) else type(e).__name__
+                raise RuntimeError(f"Flow API request failed: transport={safe_class}") from e
             raise Exception(f"Flow API request failed: {error_msg}")
 
     async def _make_text_request(
@@ -1426,12 +1473,22 @@ class FlowClient:
         img.save(output, format='JPEG', quality=95)
         return output.getvalue()
 
+    @staticmethod
+    def _prepare_upload_body(payload: Dict[str, Any]) -> Optional[bytes]:
+        """Compress only the transport envelope; never decode/re-encode pixels."""
+        serialized = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+        original_body = serialized.encode("utf-8")
+        compressed_body = gzip.compress(original_body, compresslevel=6, mtime=0)
+        return compressed_body if len(compressed_body) < len(original_body) else None
+
+
     async def upload_image(
         self,
         at: str,
         image_bytes: bytes,
         aspect_ratio: str = "IMAGE_ASPECT_RATIO_LANDSCAPE",
-        project_id: Optional[str] = None
+        project_id: Optional[str] = None,
+        diagnostic_trace: Optional[Dict[str, Any]] = None,
     ) -> str:
         """上传图片,返回mediaId
 
@@ -1456,9 +1513,11 @@ class FlowClient:
         # 编码为base64 (去掉前缀)
         image_base64 = base64.b64encode(image_bytes).decode('utf-8')
 
-        # 优先尝试新版上传接口: /v1/flow/uploadImage
-        # 若失败则自动回退到旧接口,保证兼容
-        ext = "png" if "png" in mime_type else "jpg"
+        # Scoped uploads always stay on the owned project endpoint.
+        ext = {
+            "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp",
+            "image/gif": "gif", "image/bmp": "bmp", "image/jp2": "jp2",
+        }.get(mime_type, "jpg")
         upload_file_name = f"flow2api_upload_{int(time.time() * 1000)}.{ext}"
         new_url = f"{self.api_base_url}/flow/uploadImage"
         normalized_project_id = str(project_id or "").strip()
@@ -1477,6 +1536,20 @@ class FlowClient:
             "isUserUploaded": True,
             "mimeType": mime_type
         }
+
+        # Base64 expands references by a third. Compress the HTTP envelope,
+        # retaining the exact original image bytes, dimensions and metadata.
+        # Prepare once outside the retry loop and off the event loop.
+        upload_body = None
+        upload_headers = None
+        if len(image_bytes) >= self.REFERENCE_UPLOAD_GZIP_MIN_BYTES:
+            upload_body = await asyncio.to_thread(
+                self._prepare_upload_body, new_json_data
+            )
+            if upload_body is not None:
+                upload_headers = {"Content-Encoding": "gzip"}
+        if isinstance(diagnostic_trace, dict):
+            diagnostic_trace["request_encoding"] = "gzip" if upload_body else "identity"
 
         # 兼容回退：旧接口 :uploadUserImage
         legacy_url = f"{self.api_base_url}:uploadUserImage"
@@ -1509,39 +1582,87 @@ class FlowClient:
                 debug_logger.log_error(f"[UPLOAD] Failed to pre-fetch fingerprint: {e}")
 
         for retry_attempt in range(max_retries):
+            if isinstance(diagnostic_trace, dict):
+                diagnostic_trace["attempts"] = retry_attempt + 1
             try:
                 new_result = await self._make_request(
                     method="POST",
                     url=new_url,
                     json_data=new_json_data,
+                    raw_body=upload_body,
+                    headers=upload_headers,
                     use_at=True,
                     at_token=at,
-                    use_media_proxy=True
+                    use_media_proxy=True,
+                    # The upload loop owns retries. The generic urllib fallback
+                    # otherwise doubles three reported attempts to six POSTs.
+                    allow_urllib_fallback=False,
                 )
                 media_id = (
                     self._extract_media_name(new_result.get("media"))
                     or new_result.get("mediaGenerationId", {}).get("mediaGenerationId")
                 )
                 if media_id:
+                    if isinstance(diagnostic_trace, dict):
+                        diagnostic_trace["status"] = "uploaded"
                     return media_id
-                raise Exception(f"Invalid upload response: missing media id, keys={list(new_result.keys())}")
+                media = new_result.get("media") if isinstance(new_result, dict) else None
+                media_kind = (
+                    "empty_list" if isinstance(media, list) and not media else
+                    "list" if isinstance(media, list) else
+                    "dict" if isinstance(media, dict) else
+                    "missing" if media is None else "other"
+                )
+                workflow = new_result.get("workflow") if isinstance(new_result, dict) else None
+                workflow_state = "unknown"
+                if isinstance(workflow, dict):
+                    candidate = str(workflow.get("status") or workflow.get("state") or "").upper()
+                    if re.fullmatch(r"[A-Z_]{1,48}", candidate):
+                        workflow_state = candidate.lower()
+                raise RuntimeError(
+                    f"upload_missing_media:media={media_kind}:workflow={workflow_state}"
+                )
             except Exception as new_upload_error:
                 last_error = new_upload_error
-                retry_reason = "网络超时" if self._is_timeout_error(new_upload_error) else self._get_retry_reason(str(new_upload_error))
+                raw_cause = str(new_upload_error)
+                http_match = re.search(r"HTTP Error ([1-5][0-9]{2})", raw_cause)
+                is_timeout = self._is_timeout_error(new_upload_error) or "transport=network_timeout" in raw_cause
+                retry_reason = (
+                    "网络超时" if is_timeout else
+                    "上游5xx" if http_match and int(http_match.group(1)) >= 500 else
+                    None
+                ) if normalized_project_id else self._get_retry_reason(raw_cause)
 
                 # 旧接口不携带 projectId，带项目上下文的上传一旦回退就可能把图片挂到错误项目。
                 if normalized_project_id:
                     if retry_reason and retry_attempt < max_retries - 1:
                         debug_logger.log_warning(
                             f"[UPLOAD] Project-scoped upload 遇到{retry_reason}，准备重试新版接口 "
-                            f"({retry_attempt + 2}/{max_retries}, project_id={normalized_project_id})..."
+                            f"({retry_attempt + 2}/{max_retries})..."
                         )
                         await asyncio.sleep(1)
                         continue
+                    if http_match:
+                        reason_match = re.search(r"HTTP Error [1-5][0-9]{2}: ([A-Z][A-Z0-9_]{1,64})", raw_cause)
+                        safe_cause = f"upstream_http_{http_match.group(1)}"
+                        if reason_match:
+                            safe_cause += f":{reason_match.group(1)}"
+                    elif raw_cause.startswith("upload_missing_media:"):
+                        safe_cause = raw_cause
+                    elif is_timeout:
+                        safe_cause = "network_timeout"
+                    elif "transport=" in raw_cause:
+                        safe_cause = "transport"
+                    else:
+                        safe_cause = "unknown"
+                    if isinstance(diagnostic_trace, dict):
+                        diagnostic_trace["status"] = "failed"
+                        diagnostic_trace["cause"] = safe_cause
                     raise RuntimeError(
                         "Project-scoped image upload failed via /flow/uploadImage; "
+                        f"cause={safe_cause}; attempts={retry_attempt + 1}; "
                         "legacy :uploadUserImage fallback is disabled because it may attach media "
-                        f"to a different project (project_id={normalized_project_id})."
+                        "to a different project."
                     ) from new_upload_error
 
                 debug_logger.log_warning(
