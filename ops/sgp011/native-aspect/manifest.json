@@ -1,5 +1,5 @@
 {
-  "schema": 1,
+  "schema": 2,
   "published_utc": "2026-11-07T04:52:23.524500+00:00",
   "scope": "Source archive of an already-deployed modern Cookie/RPC aspect delta, not a standalone application release",
   "historical_files": {
@@ -16,10 +16,11 @@
   "wire_ast_sha256": {
     "original_aspect_import": "d180a4243586e73f102dcb984461273600a2f29b47a67caebe44bf0c4190f3a4",
     "ASPECTS": "cade2f21d87f4245c02f10ab5de97ab0131dcbfd8295219038f2fcd0c2aa9184",
-    "context": "1147694423bcf9dd20491001b7dba0cd05c2b79240a1c6f6df1bc0516c4a3b93",
-    "image_argument": "ebc3730ccaad4e4de5274c27a161333789557aa28de982554ca94eee4e561025"
+    "context": "46ef002b91aab6e680f81f6c437f95928c8c5c28fee480940cb2f8aad6308dfb",
+    "image_argument": "c1813f082a0bc290541ce8fe706c21345b7aeb64fbb0339599c415e7116f8874"
   },
   "observed_flow_image": "sha256:f75d633f24b86dab959a6f82360417f8f1dd7bd3a5e81e6ecbba7ff169921ad8",
   "production_changes_in_publication": 0,
-  "canary_intents_consumed": true
+  "canary_intents_consumed": true,
+  "wire_ast_format": "ast.dump_without_attributes_omit_empty_type_params"
 }

@@ -1,6 +1,10 @@
 """Read-only equivalence check; never imports application modules or makes requests."""
 import argparse, ast, hashlib, json, pathlib
 def sha(b):return hashlib.sha256(b).hexdigest()
+def canonical_ast(node):
+ # Python3.12 added an empty FunctionDef.type_params field. It carries no
+ # runtime contract information here; omit only that empty version field.
+ return ast.dump(node,include_attributes=False).replace(', type_params=[]','')
 def verify(root,manifest):
  module=root/'src/services/original_aspect.py'
  assert sha(module.read_bytes())==manifest['original_aspect_sha256'],'aspect_module_differs'
@@ -10,7 +14,7 @@ def verify(root,manifest):
   if isinstance(node,ast.FunctionDef)and node.name in {'context','image_argument'}:key=node.name
   elif isinstance(node,ast.Assign)and any(isinstance(t,ast.Name)and t.id=='ASPECTS'for t in node.targets):key='ASPECTS'
   elif isinstance(node,ast.ImportFrom)and node.module=='original_aspect':key='original_aspect_import'
-  if key:got[key]=sha(ast.dump(node,include_attributes=False).encode())
+  if key:got[key]=sha(canonical_ast(node).encode())
  assert got==manifest['wire_ast_sha256'],'wire_aspect_contract_differs'
  return {'verified':True,'exact_aspect_module':True,'wire_ast_contracts':sorted(got),'application_imported':False,'network_requests':0,'business_writes':0}
 if __name__=='__main__':

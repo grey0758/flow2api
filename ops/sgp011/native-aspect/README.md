@@ -23,7 +23,9 @@ an already-updated runtime without importing the app or changing any files:
 python3 verify_runtime.py --root /path/to/modern/runtime
 ```
 
-The verifier checks the complete aspect-module bytes plus the affected import,
+The verifier normalizes the empty Python3.12 type-parameter AST field so the
+same untyped wire functions compare consistently across Python versions.
+It checks the complete aspect-module bytes plus the affected import,
 ASPECTS, context and image_argument ASTs. It permits unrelated later code to
 remain intact. It never makes Google/CAPTCHA calls or imports application code.
 The component contracts in `tests/test_native_aspect.py` should be run against
