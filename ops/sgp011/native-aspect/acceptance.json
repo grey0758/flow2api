@@ -1,0 +1,39 @@
+{
+  "cases": [
+    {
+      "task": 269176,
+      "tier": "2K",
+      "aspect": "2:3",
+      "bytes": 1025214,
+      "sha256": "c2848c1ceb16424da44e03ca098ebf66aea2527a873405546d8fddf2ea558d6b",
+      "flow_log": 197664,
+      "account": 5,
+      "width": 1696,
+      "height": 2528,
+      "format": "JPEG",
+      "full_decode": true,
+      "flow_sha256_matches": true,
+      "flow_duration_seconds": 62.50318646430969
+    },
+    {
+      "task": 269177,
+      "tier": "2K",
+      "aspect": "4:5",
+      "bytes": 1260968,
+      "sha256": "41a57b03cabdc2af252703aa6032f4a452472f85a8571cfd645f34fea05895d1",
+      "flow_log": 197665,
+      "account": 5,
+      "width": 1856,
+      "height": 2304,
+      "format": "JPEG",
+      "full_decode": true,
+      "flow_sha256_matches": true,
+      "flow_duration_seconds": 96.13192415237427
+    }
+  ],
+  "replays": 0,
+  "new_admission_posts": 2,
+  "successful_images": 2,
+  "scope": "Two final2K deliveries through tt341; not fresh4K or fleet qualification",
+  "four_five_recovery": "Existing upsample_cross_account_regeneration61-to5, one extra generation, one final consumption"
+}

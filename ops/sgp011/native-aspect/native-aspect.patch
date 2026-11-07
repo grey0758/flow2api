@@ -1,0 +1,91 @@
+diff --git a/src/services/original_aspect.py b/src/services/original_aspect.py
+--- a/src/services/original_aspect.py
++++ b/src/services/original_aspect.py
+@@ -1,6 +1,7 @@
+-"""Flow's observed Original edit mode. Never resize or add a reference image.
++"""Flow's explicit aspect contract. Never resize or add a reference image.
+ 
+-The unset RPC enum means Original, not an invented additional numeric enum.
++The explicit numeric enums below are archived from the 2026-11-04 official
++editor encoder. They replace the earlier unset/first-base Original workaround.
+ Output dimensions follow Google's published Pro image table; the 4:5 family
+ was also fully decoded from official-editor generation and both upsample tiers.
+ """
+@@ -17,6 +18,14 @@
+     'two-three': ('IMAGE_ASPECT_RATIO_PORTRAIT_TWO_THREE', 2 / 3, (848, 1264)),
+     'three-two': ('IMAGE_ASPECT_RATIO_LANDSCAPE_THREE_TWO', 3 / 2, (1264, 848)),
+     'twenty-one-nine': ('IMAGE_ASPECT_RATIO_LANDSCAPE_TWENTY_ONE_NINE', 21 / 9, (1584, 672)),
++}
++# Official I3a/scc encoder; 4:5 validated with an unchanged 800x800 reference.
++NATIVE_ASPECT_ENUMS = {
++    'IMAGE_ASPECT_RATIO_PORTRAIT_FOUR_FIVE': 8,
++    'IMAGE_ASPECT_RATIO_LANDSCAPE_FIVE_FOUR': 9,
++    'IMAGE_ASPECT_RATIO_PORTRAIT_TWO_THREE': 6,
++    'IMAGE_ASPECT_RATIO_LANDSCAPE_THREE_TWO': 7,
++    'IMAGE_ASPECT_RATIO_LANDSCAPE_TWENTY_ONE_NINE': 10,
+ }
+ SPECS = {spec[0]: spec[1:] for spec in ORIGINAL_ASPECTS.values()}
+ DIMENSIONS = {
+@@ -48,10 +57,14 @@
+         raise ValueError('original_aspect_reference_invalid') from error
+     nominal, size = SPECS[aspect]
+     ratio = width / height if height else 0
+-    # Exact requested ratio or Google's pixel-aligned output, 0.15% rounding.
+-    if width < 1 or height < 1 or min(abs(ratio / target - 1) for target in (nominal, size[0] / size[1])) > .0015:
++    # Explicit target aspect is independent of the first reference geometry.
++    # Input decode/format/orientation checks remain; no crop, pad or transcode.
++    if width < 1 or height < 1:
+         raise ValueError('original_aspect_matching_reference_required')
+-    return {'mode': 'native_original', 'aspect': aspect, 'width': width,
++    return {'mode': 'native_explicit_aspect', 'aspect': aspect,
++        'rpc_aspect_enum': NATIVE_ASPECT_ENUMS[aspect],
++        'reference_ratio_matches_target': min(abs(ratio / target - 1) for target in (nominal, size[0] / size[1])) <= .0015,
++        'width': width,
+         'height': height, 'format': fmt, 'exif_orientation': orientation,
+         'sha256': hashlib.sha256(raw).hexdigest(),
+         'reference_bytes_unchanged': True, 'additional_images': 0}
+@@ -62,7 +75,7 @@
+         raise ValueError('original_aspect_matching_reference_required')
+     result = [dict(item) for item in inputs]
+     for index, item in enumerate(result):
+-        item['imageInputType'] = BASE_ROLE if index == 0 else REFERENCE_ROLE
++        item['imageInputType'] = REFERENCE_ROLE
+     return result
+ 
+ 
+@@ -84,4 +97,4 @@
+             }
+             raise error
+     return {'width': expected[0], 'height': expected[1], 'bytes': len(raw),
+-        'sha256': hashlib.sha256(raw).hexdigest(), 'mode': 'native_original'}
++        'sha256': hashlib.sha256(raw).hexdigest(), 'mode': 'native_explicit_aspect'}
+diff --git a/src/services/cookie_media.py b/src/services/cookie_media.py
+--- a/src/services/cookie_media.py
++++ b/src/services/cookie_media.py
+@@ -21,13 +21,13 @@
+ from .flow_cookie_rpc import CookieTransport, ProtocolError, export_jar, request, response, credits, MAX_MEDIA_BODY
+ from .cookie_upload import upload_lease, media_lease, current_group, merge_cookie_delta
+ from .cookie_capacity import rpc_parallel_enabled
+-from .original_aspect import SPECS as ORIGINAL_SPECS, BASE_ROLE, REFERENCE_ROLE
++from .original_aspect import SPECS as ORIGINAL_SPECS, BASE_ROLE, REFERENCE_ROLE, NATIVE_ASPECT_ENUMS
+ 
+ MEDIA_METHODS = {'ogiZ0b', 'maseQ', 'SPrCad'}
+ ASPECTS = {'IMAGE_ASPECT_RATIO_SQUARE': 1, 'IMAGE_ASPECT_RATIO_PORTRAIT': 2,
+     'IMAGE_ASPECT_RATIO_16_9': 3, 'IMAGE_ASPECT_RATIO_LANDSCAPE': 3,
+     'IMAGE_ASPECT_RATIO_LANDSCAPE_FOUR_THREE': 5,
+-    'IMAGE_ASPECT_RATIO_PORTRAIT_THREE_FOUR': 4}
++    'IMAGE_ASPECT_RATIO_PORTRAIT_THREE_FOUR': 4, **NATIVE_ASPECT_ENUMS}
+ 
+ 
+ def media_rpc_timeout_seconds():
+@@ -94,7 +94,9 @@
+ 
+ 
+ def image_argument(project_id, prompt, model, aspect, captcha, session_id, inputs=None):
+-    original = aspect in ORIGINAL_SPECS
++    original = aspect in ORIGINAL_SPECS and aspect not in NATIVE_ASPECT_ENUMS
++    if aspect in NATIVE_ASPECT_ENUMS and model != 'GEM_PIX_2':
++        raise ProtocolError('image_original_aspect_contract_unverified')
+     if aspect not in ASPECTS and not original:
+         raise ProtocolError('image_aspect_unsupported')
+     if original and (model != 'GEM_PIX_2' or not inputs
