@@ -1,0 +1,27 @@
+{
+  "base_image": "sha256:5d9334f0fe5c0ae5af0446e05beb6a9df20331d686c05f296ed40b1656824c00",
+  "deployed_image": "sha256:b069a2886612eba6c89b0bfabe8ef7bd89c1378a54c726b9a22f8986dd1ec53e",
+  "live_utc": "2026-11-25T04:18:47.397084+00:00",
+  "pid": 1464203,
+  "container": "18321db7fbc47438f24256f4d16970d8cf545fca814ee857def3b72bcc58b4b7",
+  "changed_runtime_file": "src/api/routes.py",
+  "before_sha256": "b14d45868040ff1b5b3094e1b53cb02018f13f13dad79863166f42ae30225f25",
+  "after_sha256": "72988ae3efa94c12db5d731d5b2385943a0dbba58603a7003b690b8fb38e7e26",
+  "other_53_sources_exact": true,
+  "focused_tests": 18,
+  "nginx_writes": 0,
+  "nginx_reloads": 0,
+  "direct_action": "d8697f1b-f18d-49a0-b9c0-45f2ad60bdce",
+  "acceptance": {
+    "tt_task": 443258,
+    "channel": 341,
+    "pixels": [
+      2048,
+      2048
+    ],
+    "sha256": "3964df2558a6b425715dc3ae73bc863db94e8d5ef8b21fefdb4dde9a6a83bd1c",
+    "full_decode": true,
+    "bills": 1
+  },
+  "publication_scope": "reference archive only; no full legacy-to-modern application import"
+}

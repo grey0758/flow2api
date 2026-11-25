@@ -1,0 +1,32 @@
+--- a/src/api/routes.py
++++ b/src/api/routes.py
+@@ -11,7 +11,7 @@
+ import re
+ from urllib.parse import urlparse
+ 
+-from curl_cffi.const import CurlECode, CurlHttpVersion
++from curl_cffi.const import CurlECode, CurlHttpVersion, CurlOpt
+ from curl_cffi.requests import AsyncSession
+ from fastapi import APIRouter, Depends, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
+ from fastapi.responses import JSONResponse, StreamingResponse
+@@ -262,6 +262,11 @@
+             if remaining <= 0:
+                 break
+         diagnostic = dict(source_trace)
++        if input_reference:
++            diagnostic["connect_timeout_ms"] = 8000
++        curl_options = dict(transport.get("curl_options") or {})
++        if input_reference:
++            curl_options[CurlOpt.CONNECTTIMEOUT_MS] = 8000
+         if retry_http_version is not None:
+             diagnostic["http_version_override"] = "HTTP/1.1"
+         started = begin_transfer(diagnostic, diagnostic_stage)
+@@ -272,7 +277,7 @@
+                 # Input URLs remain independent of Google account/media exits.
+                 # The explicit empty proxy disables inherited proxy variables.
+                 async with AsyncSession(trust_env=False, curl_infos=CURL_INFOS,
+-                                        **({"curl_options": transport["curl_options"]} if transport else {})) as session:
++                                        **({"curl_options": curl_options} if curl_options else {})) as session:
+                     diagnostic["dispatch_started"] = True
+                     response = await session.get(
+                         url,
