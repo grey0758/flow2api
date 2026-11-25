@@ -1,0 +1,12 @@
+{
+  "base": "sha256:b069a2886612eba6c89b0bfabe8ef7bd89c1378a54c726b9a22f8986dd1ec53e",
+  "live": "sha256:2663726f3a133ae4ccecc974cff4a48668f2d7efbdc716fee0e2a82de88fc7c6",
+  "before_sha256": "1964dcb348abe499ed07bff5d9bedeae480ebaef62e96840bf6cfdcd426da5f0",
+  "after_sha256": "f75856bdaf888d828e1da1eeb32c3c630321f04ca143f5cf682b3a0022c66440",
+  "source_changed": [
+    "src/services/input_source_dns.py"
+  ],
+  "unchanged_source_count": 53,
+  "tests": 25,
+  "curator": "8deb9b5c-735c-482c-a630-0ef7b1f27b35"
+}

@@ -1,0 +1,73 @@
+--- a/src/services/input_source_dns.py
++++ b/src/services/input_source_dns.py
+@@ -7,0 +8 @@
++import hashlib
+@@ -12,0 +14 @@
++from .image_diagnostics import CURL_INFOS, begin_transfer, finish_transfer
+@@ -83 +85 @@
+-async def source_range_reachable(ip, url):
++async def source_range_reachable(ip, url, diagnostic=None):
+@@ -84,0 +87,5 @@
++    diagnostic = diagnostic if diagnostic is not None else {}
++    started = time.monotonic()
++    transfer, response, error = {}, None, None
++    transfer_started = begin_transfer(transfer, "input_reference_download")
++    diagnostic.update(candidate_sha12=hashlib.sha256(ip.encode()).hexdigest()[:12], outcome="pending")
+@@ -86 +93 @@
+-        async with asyncio.timeout(2):
++        async with asyncio.timeout(3):
+@@ -88 +95,2 @@
+-            async with AsyncSession(trust_env=False, curl_options=options) as session:
++            async with AsyncSession(trust_env=False, curl_options=options, curl_infos=CURL_INFOS) as session:
++                transfer["dispatch_started"] = True
+@@ -90 +98 @@
+-                    "GET", url, timeout=2, verify=True, allow_redirects=False,
++                    "GET", url, timeout=3, verify=True, allow_redirects=False,
+@@ -94,0 +103 @@
++                    diagnostic["http_status"] = response.status_code
+@@ -95,0 +105 @@
++                        diagnostic["outcome"] = "http_rejected"
+@@ -101,0 +112 @@
++                    diagnostic["received_bytes"] = received
+@@ -102,0 +114 @@
++                        diagnostic["outcome"] = "empty_body"
+@@ -103,0 +116 @@
++        diagnostic["outcome"] = "verified"
+@@ -105 +118,3 @@
+-    except asyncio.CancelledError:
++    except asyncio.CancelledError as exc:
++        error = exc
++        diagnostic["outcome"] = "cancelled"
+@@ -107 +122,6 @@
+-    except Exception:
++    except Exception as exc:
++        error = exc
++        diagnostic.update(outcome="failed", error_type=type(exc).__name__)
++        code = getattr(exc, "code", None)
++        if isinstance(code, int):
++            diagnostic["curl_code"] = code
+@@ -108,0 +129,5 @@
++    finally:
++        finish_transfer(transfer, transfer_started, response, error)
++        transfer["response_complete"] = diagnostic["outcome"] == "verified"
++        diagnostic["transport"] = transfer
++        diagnostic["duration_ms"] = round((time.monotonic() - started) * 1000, 3)
+@@ -112 +137 @@
+-    """Return one fresh TLS/sample-verified public CDN candidate within 5s.
++    """Return one fresh TLS/sample-verified public CDN candidate within 6s.
+@@ -120 +145,2 @@
+-    trace = {"dns_route": "system", "alternate_dns_attempted": True}
++    trace = {"dns_route": "system", "alternate_dns_attempted": True,
++             "alternate_probe_budget_ms": 3000, "alternate_probes": []}
+@@ -123 +149 @@
+-        async with asyncio.timeout(min(5, remaining - 3)):
++        async with asyncio.timeout(min(6, remaining - 3)):
+@@ -132 +158,7 @@
+-            tasks = [asyncio.create_task(source_range_reachable(ip, url)) for ip in candidates]
++            trace["alternate_resolution_ms"] = round((time.monotonic() - started) * 1000, 3)
++            if not candidates:
++                trace["alternate_no_public_answers"] = True
++            for ip in candidates:
++                diagnostic = {}
++                trace["alternate_probes"].append(diagnostic)
++                tasks.append(asyncio.create_task(source_range_reachable(ip, url, diagnostic)))
