@@ -1,0 +1,12 @@
+{
+  "base": "sha256:2663726f3a133ae4ccecc974cff4a48668f2d7efbdc716fee0e2a82de88fc7c6",
+  "image": "sha256:80b7abe86207363a042bdb0ec1bfeae840e8575581c805853e2f73bbada1e3ed",
+  "source_sha256": {
+    "generation_handler.py": "b345e351c12e02f335c0a0b911bfaa57518d5718447f207b60b946b57d6846f0",
+    "upload_exit_backoff.py": "8eb6a2f17961bd491c84ba46674f8128c2e3add4e1c5631b3951043234c14415"
+  },
+  "tests": 34,
+  "source_count": 54,
+  "unchanged_sources": 52,
+  "curator": "af0b1afe-b01f-4fd8-8715-efed73f983d1"
+}

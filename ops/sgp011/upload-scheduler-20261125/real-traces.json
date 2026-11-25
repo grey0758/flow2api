@@ -1,0 +1,29 @@
+{
+  "rows": [
+    {
+      "upload_admission": {
+        "status": "admitted"
+      },
+      "refs": [
+        {
+          "status": "failed",
+          "cause": "network_timeout",
+          "rpc_trace": {
+            "auth_mode": "google_cookie_rpc",
+            "rpc_method": "maseQ",
+            "dispatch_started": true,
+            "phase": "rpc_dispatch",
+            "success": false,
+            "code": "rpc_transport_unavailable_curl_28",
+            "submission_outcome": "unknown",
+            "transport": {
+              "curl_code": 28,
+              "response_complete": false,
+              "duration_ms": 120031.018
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

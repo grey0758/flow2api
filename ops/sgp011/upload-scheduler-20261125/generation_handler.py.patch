@@ -1,0 +1,82 @@
+--- a/src/services/generation_handler.py
++++ b/src/services/generation_handler.py
+@@ -1903 +1903,4 @@
+-        active = self._upload_exit_backoff().active()
++        breaker = self._upload_exit_backoff()
++        scheduler = breaker.scheduler_active()
++        result |= {key[1] for key in scheduler if key[0] == "account"}
++        active = breaker.active() | {key[1] for key in scheduler if key[0] == "exit"}
+@@ -1907,0 +1911,55 @@
++
++    @staticmethod
++    def _upload_scheduler_timeout(error, upload_trace):
++        """Narrow modern upload evidence; this predicate grants NO retry."""
++        if (not str(error or "").startswith(
++                "Project-scoped image upload failed via /flow/uploadImage; cause=network_timeout;")
++                or (upload_trace or {}).get("admission", {}).get("status") != "admitted"):
++            return False
++        for ref in (upload_trace or {}).get("images") or []:
++            rpc = ref.get("rpc_trace") or {}
++            transport = rpc.get("transport") or {}
++            duration = transport.get("duration_ms")
++            if (ref.get("status") == "failed" and ref.get("cause") == "network_timeout"
++                    and rpc.get("auth_mode") == "google_cookie_rpc"
++                    and rpc.get("rpc_method") == "maseQ" and rpc.get("success") is False
++                    and rpc.get("dispatch_started") is True
++                    and rpc.get("phase") == "rpc_dispatch"
++                    and rpc.get("code") == "rpc_transport_unavailable_curl_28"
++                    and rpc.get("submission_outcome") == "unknown"
++                    and transport.get("curl_code") == 28
++                    and rpc.get("http_status") is None
++                    and transport.get("http_status") is None
++                    and transport.get("response_complete") is False
++                    and type(duration) in (int, float) and math.isfinite(duration) and duration >= 1000):
++                return True
++        return False
++
++    def _observe_upload_schedule(self, account, digest, started, upload_trace, error=None):
++        """Observe a whole settled batch, not individual parallel children."""
++        breaker = self._upload_exit_backoff()
++        event = None
++        if error is not None and self._upload_scheduler_timeout(error, upload_trace):
++            event = breaker.observe_timeout(account, digest)
++            event["trigger"] = "cookie_upload_timeout_unknown"
++        elif error is None:
++            refs = (upload_trace or {}).get("images") or []
++            if refs and all(ref.get("status") == "uploaded"
++                    and (ref.get("rpc_trace") or {}).get("rpc_method") == "maseQ"
++                    and (ref.get("rpc_trace") or {}).get("success") is True
++                    and (ref.get("rpc_trace") or {}).get("submission_outcome") == "rpc_accepted"
++                    and ((ref.get("rpc_trace") or {}).get("transport") or {}).get("response_complete") is True
++                    for ref in refs):
++                cleared = breaker.observe_success(account, digest, started)
++                if cleared:
++                    event = {"policy": "upload_timeout_scheduler_v1", "trigger": "complete_upload_success",
++                             "cleared_scopes": cleared, "authorizes_replay": False}
++        if event is not None:
++            event.update(account_id=account, assigned_exit_sha256=digest,
++                         registry_identity_available=digest is not None)
++            if isinstance(upload_trace, dict):
++                upload_trace["scheduler_backoff"] = event
++            try:
++                print("[UPLOAD_SCHEDULER_BACKOFF] " + json.dumps(event, sort_keys=True), flush=True)
++            except Exception:
++                pass
+@@ -2523 +2581,2 @@
+-                                                        "busy_upload_accounts": sorted(busy_upload_accounts)}
++                                                        "busy_upload_accounts": sorted(busy_upload_accounts),
++                                                        "backoff_policy": "upload_timeout_scheduler_v1"}
+@@ -3426,0 +3486,6 @@
++        # Stable pre-upload assignment; a changed route must not inherit an
++        # older exit's failure/success. Account fallback works without registry.
++        environment = (image_trace or {}).get("environment") or {}
++        assigned_exit = environment.get("assigned_exit_sha256")
++        if not isinstance(assigned_exit, str) or not re.fullmatch(r"[a-f0-9]{64}", assigned_exit):
++            assigned_exit = None
+@@ -3479 +3544,3 @@
+-            return await asyncio.gather(*tasks)
++            results = await asyncio.gather(*tasks)
++            self._observe_upload_schedule(account, assigned_exit, batch_started_at, upload_trace)
++            return results
+@@ -3526,0 +3594 @@
++            self._observe_upload_schedule(account, assigned_exit, batch_started_at, upload_trace, failure)
