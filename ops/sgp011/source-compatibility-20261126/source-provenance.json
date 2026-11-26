@@ -1,0 +1,115 @@
+{
+  "base": "sha256:80b7abe86207363a042bdb0ec1bfeae840e8575581c805853e2f73bbada1e3ed",
+  "release": "sha256:da4282d2459cc9cf3cd3f45fef924e6e2429520c1223348424de3b98eb7007a1",
+  "base_manifest": {
+    "src/main.py": "57ddcea1c5039b417fb44d3f09c0b2f8c6032e25b8d1ad96d06d2427a46a4008",
+    "src/services/proxy_manager.py": "ae68f4f62054b0ab5bf4d205bb30d14ed4f11a73707e76475ebc13792619baee",
+    "src/services/generation_handler.py": "b345e351c12e02f335c0a0b911bfaa57518d5718447f207b60b946b57d6846f0",
+    "src/services/load_balancer.py": "ace5e37c3445a48bfc13d383966a4144fd1440586d8ed93d62a39bf3afaca2e9",
+    "src/services/browser_captcha.py": "3a66364196ef093df1f56a25d089bc9e614022d4b4bf7b4ba29d3e4e11084b4d",
+    "src/services/concurrency_manager.py": "84b3e276f6b3f51759b2efd29f0fed2d0dce20ae7d4c7f2df80e779e08284258",
+    "src/services/browser_cookie_utils.py": "e75b53ef70ee4261c47338f229562d23db733a727a7ce5d092c366f2cd0f99b5",
+    "src/services/browser_captcha_personal.py": "020dad2d78cafe3df7fd41756f55db9b26c862ad34c516c8ceba51ab8aba784b",
+    "src/services/browser_captcha_extension.py": "e103f80bdc928a404dfa422106a190b7ee7cac35c4deb55d919942debbb5adc9",
+    "src/services/token_manager.py": "d2b4ff27585365d55db3f1373693fc76a89e5cd791ce3eb6e0f08520cced2f62",
+    "src/services/file_cache.py": "bd1112128a4e6a14fae162338d5f10a56492cba96f8148a2005637e46b087d7f",
+    "src/services/flow_client.py": "532122036980fbd68386c21278aef4831ac8aaef23c3d3f5542a53727a19e3a9",
+    "src/services/protocol_login.py": "5fbf2a2e8c598a0636c539761a5d455384fc1120b28c6047ae07d8bba514ea87",
+    "src/services/__init__.py": "99a24052bc9dbf1c7fe42293487d81c810dff32595852a23bc29f634afeaa2df",
+    "src/services/upload_exit_backoff.py": "8eb6a2f17961bd491c84ba46674f8128c2e3add4e1c5631b3951043234c14415",
+    "src/services/input_source_dns.py": "f75856bdaf888d828e1da1eeb32c3c630321f04ca143f5cf682b3a0022c66440",
+    "src/services/cookie_media.py": "2895b3e6469b096b43374f9264374d52cbeec35891c99162afcaa0b7199f8266",
+    "src/services/upload_first.py": "9232dfae0e49a791e2014739bcb20e51653038a44450005c8fa8ebeb4e3ece48",
+    "src/services/original_aspect.py": "9eca8fc457aa9701bf5e1c905d6406f5dab6c78529ab79df768fa4a946ffa964",
+    "src/services/cookie_capacity.py": "4ddffcb7a5400187ce3797afb5ef2eaa4243a606a47cf975ea5fa2976d69e704",
+    "src/services/cookie_upload.py": "f38de9c689110446ec043060100878a85d421270e0481092e5489f443fc27a17",
+    "src/services/flow_cookie_rpc.py": "2d73870b37e59a0d0ca34f554fca1b8706cbc00b89e0fd96e728902c1ba94d56",
+    "src/services/google_failure_evidence.py": "1c66448fc61517be7fc4b045a02d976cfb8fc5c0cf991b59f50df095afaa3a3b",
+    "src/services/upload_success_evidence.py": "9e99b53c687ab0804764160cf7cce2c15b991f6eb9fac76129c25a30cc1e3a5a",
+    "src/services/image_watermark.py": "3169f2c494e30f88f9bd1289946e0b3ebdd35e2a13fc466690bb06d324f17538",
+    "src/services/watermark_worker.py": "51ba53557ae23b20e9eb06ce428db7c58cbf7f81eeddb478ea2ae06203a199e9",
+    "src/services/reference_compat.py": "4d262418a92592d7dcfb4f36245504ba59e3cb3e50db64dcd3818d9611a499c6",
+    "src/services/cookie_auth.py": "72ad0b877217ca6732022e47bdd21ca81be4d0532d6c453be5427a28d19efd67",
+    "src/services/cookie_native.py": "d0a94b89ce2ea8713c7c8306b821dc092350d2dad1089b41d5da41a28b7a3321",
+    "src/services/image_recovery.py": "31c00c8a17fc12839d2be566a850a6679132f4643f161e726c0ab94c41b17c6a",
+    "src/services/provider_auth_guard.py": "d3c9218acc9c813ab1e0a2544357108f1b8f0b8e0ecf9259dbf72a6ff1d0c99b",
+    "src/services/image_diagnostics.py": "1b73e9d1f391f4973ea4bb66b7da40889785adf1517646094f9d993f971fc4e8",
+    "src/services/image_content_policy.py": "abb1530b83ffe2703bbde691a61fb87946f33fbc815dea7a3b2750c4db794a65",
+    "src/services/image_provenance.py": "8bcc35dd84edfb41296376f0a5eb6c5acecc28b51c74e4abd8c417dd6fb7c1a0",
+    "src/services/upload_egress.py": "84a34f5d5b490aaa7a733bbde9eb7d8ac28734d92154c7b4b5eae43120894530",
+    "src/services/upload_evidence.py": "9db92861ac7531096d0faa87108e7379180c6f3c638e3f1bcdf5f9bd1997ef54",
+    "src/services/upsample_receive.py": "a5e6b4a83da98f6f0d44f27a8495af4ac1fd3d7ea372b3da9099c3fad4d1ae9b",
+    "src/services/image_failure_guard.py": "ff1ccea37aa80c40ebe6c572343a422b52728d179f597ab55e759cdd73b3af99",
+    "src/services/plugin_sync_contract.py": "6dba2855bb4635a3641953f0eb05a9f6177c0219a97df112aa34826b1ab18d6c",
+    "src/core/config.py": "ce7caa69d9cda05526e6d8a1239ecb439cd24b2b1ec0a619c6e3381e438d5387",
+    "src/core/account_tiers.py": "3f96880e379e105e309cdd6c04a11e7d40d28e26fe809fadd909fc4ef4f4bc7f",
+    "src/core/model_resolver.py": "1f74a278c0ca1116a75146f42bfc8d86afd891fedd57850cc860404cc6d81cd6",
+    "src/core/monitoring.py": "708c4b41f1857faa701d440163c8a4370e2ed9279f0a8f6719d5b850bfbd6c44",
+    "src/core/browser_runtime_status.py": "3f8ae88e51d97661828ce285d229084729416a9270c0dc1f3dd2dd78303cfad8",
+    "src/core/auth.py": "ca1db594b44ed01afcd7f4eeb1654dc8bb998bfcd776b645eccaab1023ec33e0",
+    "src/core/logger.py": "f105598a0191595a7f666346a10fec5c8108813e1274e96b44835dce949cd833",
+    "src/core/database.py": "1b06c87d6a040719aade9152a9c91135c0a93373791a01c68a20744a62e11dc7",
+    "src/core/models.py": "bc1a0ab80eae0fb10ce3305117a4693c67ae576b321dcb707beafaffc0103dc5",
+    "src/core/__init__.py": "6dfc409fbaf9c16d8660921d5d1aee6115c0d4295bad3dd80aa54fe03e93a64a",
+    "src/core/native_schema.py": "4e320dde7ba430f0de8f7c09efd1794fdb9d24ccac3f007a5af0ce477606ee69",
+    "src/api/admin.py": "69d9ddbd6a21f7db0be5afbdd9c5fd85aee010d7bb2bde67e3b57ca9b6b06e1d",
+    "src/api/routes.py": "72988ae3efa94c12db5d731d5b2385943a0dbba58603a7003b690b8fb38e7e26",
+    "src/api/__init__.py": "9dbfbd8abdcb599a60c84266b61c5d1caf98ab54811301feae41892ff2d43bee",
+    "src/api/image_dashboard.py": "675ed2a25f537024a4adf0923bf109adbef3d7444026597f13630950e8c0af7c"
+  },
+  "snapshots": {
+    "baseline/src/api/routes.py": {
+      "sha256": "72988ae3efa94c12db5d731d5b2385943a0dbba58603a7003b690b8fb38e7e26",
+      "bytes": 42480,
+      "storage": "gzip byte-exact"
+    },
+    "candidate/src/api/routes.py": {
+      "sha256": "1b858ace8cda2dc625626a81d1963d0d6743d52b9baca9c4f2d612c89391516d",
+      "bytes": 43893,
+      "storage": "gzip byte-exact"
+    },
+    "baseline/src/services/load_balancer.py": {
+      "sha256": "ace5e37c3445a48bfc13d383966a4144fd1440586d8ed93d62a39bf3afaca2e9",
+      "bytes": 31916,
+      "storage": "gzip byte-exact"
+    },
+    "candidate/src/services/load_balancer.py": {
+      "sha256": "73b0e953db0a1f7344ad5dc615d88cd79cee2bea97a44748c529849ffbe8fc1a",
+      "bytes": 33058,
+      "storage": "gzip byte-exact"
+    },
+    "baseline/src/services/image_diagnostics.py": {
+      "sha256": "1b73e9d1f391f4973ea4bb66b7da40889785adf1517646094f9d993f971fc4e8",
+      "bytes": 11662,
+      "storage": "gzip byte-exact"
+    },
+    "baseline/src/services/cookie_auth.py": {
+      "sha256": "72ad0b877217ca6732022e47bdd21ca81be4d0532d6c453be5427a28d19efd67",
+      "bytes": 16357,
+      "storage": "gzip byte-exact"
+    },
+    "baseline/src/services/cookie_media.py": {
+      "sha256": "2895b3e6469b096b43374f9264374d52cbeec35891c99162afcaa0b7199f8266",
+      "bytes": 50594,
+      "storage": "gzip byte-exact"
+    },
+    "baseline/src/services/flow_cookie_rpc.py": {
+      "sha256": "2d73870b37e59a0d0ca34f554fca1b8706cbc00b89e0fd96e728902c1ba94d56",
+      "bytes": 21690,
+      "storage": "gzip byte-exact"
+    },
+    "baseline/src/services/generation_handler.py": {
+      "sha256": "b345e351c12e02f335c0a0b911bfaa57518d5718447f207b60b946b57d6846f0",
+      "bytes": 257697,
+      "storage": "gzip byte-exact"
+    },
+    "baseline/src/services/upload_exit_backoff.py": {
+      "sha256": "8eb6a2f17961bd491c84ba46674f8128c2e3add4e1c5631b3951043234c14415",
+      "bytes": 4244,
+      "storage": "gzip byte-exact"
+    }
+  },
+  "tests": 39,
+  "paid_posts": 0,
+  "source_archive_only": true
+}
